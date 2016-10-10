@@ -38,6 +38,7 @@ First, let us get the data. We will use the **Heart** data from the textbook, av
 ```{r}
 heart <- read.csv(file="http://www-bcf.usc.edu/~gareth/ISL/Heart.csv", row.names=1)
 summary(heart)
+str(heart)
 ```
 The task is to use the features to predict **AHD**, binary outcome related to some heart disease. 
 
@@ -79,19 +80,27 @@ y.test <- heart[-train.index, "AHD"]
 Answer: 
 
 ```{r}
-train.data <- heart[train.index, ]
-test.data <- heart[-train.index, ]
-model.all <- glm(formula = AHD ~ ., family = binomial, data = train.data)
+# put your R code here inside the blocks
+library("MASS")
+y1 <- as.numeric(y)
+y1 <- y1 - 1
+data1 <- data.frame(cbind(y1, x))
+colnames(data1)[1]  <- "AHD"
+str(data1)
+summary(data1)
+glm1 <- glm(AHD ~ ., data=data1, family=binomial())
+summary(glm1)
+step.opt <- stepAIC(glm1, direction="backward")
+step.opt
+summary(step.opt)
 
-# using the stepAIC() to find the optimal glm model
-library(MASS)
-model.step <- stepAIC(model.all, direction = "both")
-model.glm <- model.step
-summary(model.glm)
 
-# use the model to predict
-glm.prob <- predict(model.glm, newdata = test.data, type = "response")
-glm.pred <- glm.prob >= 0.5
+x.test1 <- data.frame(x.test)
+str(x.test1)
+#x.test1 <- x.test1[, c("Age", "Sex1", "ChestPainnonanginal", "RestBP", 
+                       #"Chol", "MaxHR", "Slope2", "Slope3" , "Ca1", "Ca2", "Ca3", "Thalreversable")]
+pred.glm <- predict(step.opt, newdata=x.test1, type="response")
+
 ```
 
 
@@ -101,28 +110,18 @@ glm.pred <- glm.prob >= 0.5
 Answer: 
 
 ```{r}
+# put your R code here inside the blocks
+
 library("glmnet")
-# Fit a Ridge Regression model on the training data
-ridge.mod <- glmnet(x, y, family = "binomial", alpha=0) 
-str(ridge.mod)
+?glmnet
+ridge.mod <- glmnet(x, y, alpha=0, family="binomial")
+ridge.cv <- cv.glmnet(x, y, alpha=0, family="binomial")
 
-# use cross-validtion to find the optimal $\lambda$ 
-ridge.cv <- cv.glmnet(x, y, family = "binomial", type.measure = "class", alpha=0)
-plot(ridge.cv)
-ridge.lam <- ridge.cv$lambda.min
-# the optimal lamda
-ridge.lam
-# plot the optimal point
-log(ridge.lam)
-min(ridge.cv$cvm)
-points(log(ridge.lam), min(ridge.cv$cvm), cex=3)
-# plot the optimal lamda
-plot(ridge.mod, xvar="lambda", label = TRUE)
-abline(v=log(ridge.lam), lty=2)
-
-# prediciton using optimal model
-ridge.prob <- predict(ridge.mod, s=ridge.lam, newx=x.test, type = "response", exact=TRUE)
-ridge.pred <- predict(ridge.mod, s=ridge.lam, newx=x.test, type = "class", exact=TRUE)
+ridge.lam2 <- ridge.cv$lambda.1se
+log(ridge.lam2)
+min(ridge.cv$cvm) + ridge.cv$cvsd[which.min(ridge.cv$cvm)]
+points(log(ridge.lam2), min(ridge.cv$cvm) + ridge.cv$cvsd[which.min(ridge.cv$cvm)])
+pred.rid <- predict(ridge.mod, s=ridge.lam2, newx=x.test, exact=TRUE, type="response")
 ```
 
 
@@ -131,27 +130,15 @@ ridge.pred <- predict(ridge.mod, s=ridge.lam, newx=x.test, type = "class", exact
 Answer: 
 
 ```{r}
-# Fit a LASSO Regression model on the training data
-lasso.mod <- glmnet(x, y, family = "binomial", alpha=1) 
-str(lasso.mod)
+# put your R code here inside the blocks
+lasso.mod <- glmnet(x, y, alpha=1,family="binomial")
+lasso.cv <- cv.glmnet(x, y, alpha=1,family="binomial")
 
-# use cross-validtion to find the optimal $\lambda$ 
-lasso.cv <- cv.glmnet(x, y, family = "binomial", type.measure = "class", alpha=1)
-plot(lasso.cv)
-lasso.lam <- lasso.cv$lambda.min
-# the optimal lamda
-lasso.lam
-# plot the optimal point
-log(lasso.lam)
-min(lasso.cv$cvm)
-points(log(lasso.lam), min(lasso.cv$cvm), cex=3)
-# plot the optimal lamda
-plot(lasso.mod, xvar="lambda", label = TRUE)
-abline(v=log(lasso.lam), lty=2)
-
-# prediciton using optimal model
-lasso.prob <- predict(lasso.mod, s=lasso.lam, newx=x.test, type = "response", exact=TRUE)
-lasso.pred <- predict(lasso.mod, s=lasso.lam, newx=x.test, type = "class", exact=TRUE)
+lasso.lam2 <- lasso.cv$lambda.1se
+log(lasso.lam2)
+min(lasso.cv$cvm) + lasso.cv$cvsd[which.min(lasso.cv$cvm)]
+points(log(lasso.lam2), min(lasso.cv$cvm) + lasso.cv$cvsd[which.min(lasso.cv$cvm)], cex=3)
+pred.lasso <-  predict(lasso.mod, s=lasso.lam2, newx=x.test, exact=TRUE,type="response")
 ```
 
 
@@ -160,36 +147,32 @@ lasso.pred <- predict(lasso.mod, s=lasso.lam, newx=x.test, type = "class", exact
 Answer: 
 
 ```{r}
-# random partition for 10-fold cross-validation
+# put your R code here inside the blocks
 K <- 10
 n <- nrow(x)
 fold <- rep(0, n)
-set.seed(2)
 shuffled.index <- sample(n, n, replace=FALSE)
 fold[shuffled.index] <- rep(1:K, length.out=n)
+table(fold)
 
-# cross-validation to find the best alpha-lambda combination
 alphas <- seq(0, 1, 0.1)
-en.cv.error <- data.frame(alpha=alphas)
+en2.cv.error <- data.frame(alpha=alphas)
 for (i in 1:length(alphas)){
-    en.cv <- cv.glmnet(x, y, alpha=alphas[i], family = "binomial", type.measure = "class", foldid=fold)
-    en.cv.error[i, "lambda.min"] <- en.cv$lambda.min
-    en.cv.error[i, "error.min"] <- min(en.cv$cvm)
+    en2.cv <- cv.glmnet(x, y, alpha=alphas[i], foldid=fold, family="binomial")
+    en2.cv.error[i, "lambda.min"] <- en2.cv$lambda.min
+    en2.cv.error[i, "error.min"] <- min(en2.cv$cvm)
+    en2.cv.error[i, "lambda.1se"] <- en2.cv$lambda.1se
+    en2.cv.error[i, "error.1se"] <- min(en2.cv$cvm) + en2.cv$cvsd[which.min(en2.cv$cvm)]
 }
-en.cv.error
+en2.cv.error
+en2.lam2 <- en2.cv.error[which.min(en2.cv.error$error.1se), "lambda.1se"]
+en2.alpha2 <- en2.cv.error[which.min(en2.cv.error$error.1se), "alpha"]
+en2.lam2 
+en2.alpha2
 
-# optimal lambda and alpha
-en.lam <- en.cv.error[which.min(en.cv.error$error.min), "lambda.min"]
-en.alpha <- en.cv.error[which.min(en.cv.error$error.min), "alpha"]
+en2.mod <- glmnet(x, y, alpha=en2.alpha2, family="binomial")
+pred.elas <-  predict(en2.mod, s=en2.lam2, newx=x.test, exact=TRUE,type="response")
 
-# the optimal model
-en.mod <- glmnet(x, y, family = "binomial", alpha=en.alpha)
-plot(en.mod, xvar="lambda", label = TRUE)
-abline(v=log(en.lam), lty=2)
-
-# prediciton using optimal model
-en.prob <- predict(en.mod, s=en.lam, newx=x.test, type = "response", exact=TRUE)
-en.pred <- predict(en.mod, s=en.lam, newx=x.test, type = "class", exact=TRUE)
 ```
 
 
@@ -199,59 +182,51 @@ en.pred <- predict(en.mod, s=en.lam, newx=x.test, type = "class", exact=TRUE)
 Answer: 
 
 ```{r}
+# put your R code here inside the blocks
 library("ROCR")
-glm.mat <- table(y.test, glm.pred)
-ridge.mat <- table(y.test, ridge.pred)
-lasso.mat <- table(y.test, lasso.pred)
-en.mat <- table(y.test, en.pred)
+glm.pred <- prediction(pred.glm, y.test)
+rid.pred <- prediction(pred.rid, y.test)
+lasso.pred <- prediction(pred.lasso, y.test)
+elas.pred <- prediction(pred.elas,y.test)
 
-# measuring misclassification rate
-misclass <- matrix(rep(0,4), nrow = 4, ncol = 1, dimnames = list(c("glm", "ridge", "lasso", "en"), "misclassification rate"))
-misclass["glm", ] <- (glm.mat[1,2]+glm.mat[2,1])/length(y.test)
-misclass["ridge", ] <- (ridge.mat[1,2]+ridge.mat[2,1])/length(y.test)
-misclass["lasso", ] <- (lasso.mat[1,2]+lasso.mat[2,1])/length(y.test)
-misclass["en", ] <- (en.mat[1,2]+en.mat[2,1])/length(y.test)
-misclass
 
-# construction prediction models
-pred.glm <- prediction(glm.prob, y.test)
-pred.ridge <- prediction(ridge.prob, y.test)
-pred.lasso <- prediction(lasso.prob, y.test)
-pred.en <- prediction(en.prob, y.test)
+#error rate
+glm.err <- performance(glm.pred, measure="err")
+rid.err <- performance(rid.pred, measure="err")
+lasso.err <- performance(lasso.pred, measure="err")
+elas.err <- performance(elas.pred, measure="err")
 
-# ROC plots
-par(mfrow=c(2,2))
-glm.ROC <- performance(pred.glm, measure="tpr", x.measure="fpr")
-plot(glm.ROC, main = "ROC plot of Logistic Regression")
-abline(a=0, b=1, lty=2)
+plot(glm.err, col="yellow")
+plot(rid.err, col="black", add=TRUE)
+plot(lasso.err, col="blue", add=TRUE)
+plot(elas.err, col="red", add=TRUE)
+legend(x=0.1, y=0.3, legend=c("glm.err","rid.err", "lasso.err", "elas.err"), lty=c(1, 1, 1, 1), lwd=c(2, 2, 2, 2), col=c("yellow","black", "blue", "red"))
 
-ridge.ROC <- performance(pred.ridge, measure="tpr", x.measure="fpr")
-plot(ridge.ROC, main = "ROC plot of Ridge Regression")
-abline(a=0, b=1, lty=2)
+#Roc
+glm.ROC <- performance(glm.pred, measure="tpr", x.measure="fpr")
+rid.ROC <- performance(rid.pred, measure="tpr", x.measure="fpr")
+lasso.ROC <- performance(lasso.pred, measure="tpr", x.measure="fpr")
+elas.ROC <- performance(elas.pred, measure="tpr", x.measure="fpr")
 
-lasso.ROC <- performance(pred.lasso, measure="tpr", x.measure="fpr")
-plot(lasso.ROC, main = "ROC plot of LASSO Regression")
-abline(a=0, b=1, lty=2)
+plot(glm.ROC, col="yellow")
+plot(rid.ROC, col="black", add=TRUE)
+plot(lasso.ROC, col="blue", add=TRUE)
+plot(elas.ROC, col="red", add=TRUE)
+abline(a=0, b=1, lty=2) # diagonal line
+legend(x=0.9, y=0.5, legend=c("glm.err","rid.err", "lasso.err", "elas.err"), lty=c(1, 1, 1, 1), lwd=c(2, 2, 2, 2), col=c("yellow","black", "blue", "red"))
 
-en.ROC <- performance(pred.en, measure="tpr", x.measure="fpr")
-plot(en.ROC, main = "ROC plot of Elastic Net Regression")
-abline(a=0, b=1, lty=2)
+#AUC
+glm.auc <- performance(glm.pred, "auc")
+as.numeric(glm.auc@y.values)
 
-par(mfrow=c(1,1))
+rid.auc <- performance(rid.pred, "auc")
+as.numeric(rid.auc@y.values)
 
-# measuring AUC
-auc <- matrix(rep(0,4), nrow = 4, ncol = 1, dimnames = list(c("glm", "ridge", "lasso", "en"), "AUC"))
+lasso.auc <- performance(lasso.pred, "auc")
+as.numeric(lasso.auc@y.values)
 
-glm.auc <- performance(pred.glm, measure = "auc")
-auc["glm", ] <- as.numeric(glm.auc@y.values)
+elas.auc <- performance(elas.pred, "auc")
+as.numeric(elas.auc@y.values)
 
-ridge.auc <- performance(pred.ridge, measure = "auc")
-auc["ridge", ] <- as.numeric(ridge.auc@y.values)
 
-lasso.auc <- performance(pred.lasso, measure = "auc")
-auc["lasso", ] <- as.numeric(lasso.auc@y.values)
-
-en.auc <- performance(pred.en, measure = "auc")
-auc["en", ] <- as.numeric(en.auc@y.values)
-auc
 ```
